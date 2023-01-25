@@ -194,6 +194,24 @@ class GSObject:
 
         return _Transform(self, flux_ratio=flux_ratio)
 
+
+    def _shear(self, shear):
+        """Equivalent to `GSObject.shear`, but without the overhead of sanity checks or other
+        ways to input the ``shear`` value.
+
+        Also, it won't propagate any noise attribute.
+
+        Parameters:
+            shear:      The `Shear` to be applied.
+
+        Returns:
+            the sheared object.
+        """
+        from jax_galsim.transform import _Transform
+        return _Transform(self, shear.getMatrix())
+
+    
+
     # Make sure the image is defined with the right size and wcs for drawImage()
     def _setup_image(
         self, image, nx, ny, bounds, add_to_image, dtype, center, odd=False

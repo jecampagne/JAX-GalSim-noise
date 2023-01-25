@@ -47,6 +47,7 @@ from jax_galsim.sum import Add, Sum
 
 # Transfromation
 from jax_galsim.transform import Transformation, Transform
+from jax_galsim.shear import Shear
 
 # Boxes
 from jax_galsim.box import Box, Pixel
