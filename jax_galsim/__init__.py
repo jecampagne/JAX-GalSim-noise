@@ -40,6 +40,7 @@ from jax_galsim.bounds import Bounds, BoundsI, BoundsD
 # Profiles
 from jax_galsim.gaussian import Gaussian
 from jax_galsim.exponential import Exponential
+from jax_galsim.moffat import Moffat
 
 # Sum
 from jax_galsim.sum import Add, Sum
