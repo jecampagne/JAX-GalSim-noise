@@ -4,6 +4,10 @@ import jax.numpy as jnp
 import galsim as _galsim
 from jax._src.numpy.util import _wraps
 
+@_wraps(
+    _galsim.Shear,
+    lax_description="Does not support (yet) all shear parametrisation schema",
+)
 class Shear():
     def __init__(self, *args, **kwargs):
 
@@ -145,28 +149,75 @@ class Shear():
     def g(self):
         """The magnitude of the shear in the "reduced shear" definition.
         """
-        return abs(self._g)
+        return jnp.abs(self._g)
 
+    def _g2e(self, absgsq):
+        return 2. / (1.+absgsq)
+
+
+    def _e2g(self, absesq):
+        if absesq > 1.e-4:
+            #return (1. - np.sqrt(1.-absesq)) / absesq
+            return 1. / (1. + np.sqrt(1.-absesq))
+        else:
+            # Avoid numerical issues near e=0 using Taylor expansion
+            return 0.5 + absesq*(0.125 + absesq*(0.0625 + absesq*0.0390625))
+
+    def _g2eta(self, absg):
+        if absg > 1.e-4:
+            return 2.*jnp.arctanh(absg)/absg
+        else:
+            # This doesn't have as much trouble with accuracy, but have to avoid absg=0,
+            # so might as well Taylor expand for small values.
+            absgsq = absg * absg
+            return 2. + absgsq*((2./3.) + absgsq*0.4)
+
+    def _eta2g(self, abseta):
+        if abseta > 1.e-4:
+            return jnp.tanh(0.5*abseta)/abseta
+        else:
+            absetasq = abseta * abseta
+            return 0.5 + absetasq*((-1./24.) + absetasq*(1./240.))
+
+    # define all the various operators on Shear objects
+    def __neg__(self):
+        return _Shear(-self._g)
+
+    # order of operations: shear by other._shear, then by self._shear
+    def __add__(self, other):
+        return _Shear((self._g + other._g) / (1. + self._g.conjugate() * other._g))
+
+    # order of operations: shear by -other._shear, then by self._shear
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __eq__(self, other):
+        return self is other or (isinstance(other, Shear) and self._g == other._g)
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+
+    @_wraps(_galsim.Shear.getMatrix)
     def getMatrix(self):
-        r"""Return the matrix that tells how this shear acts on a position vector:
-
-        If a field is sheared by some shear, s, then the position (x,y) -> (x',y')
-        according to:
-
-        .. math::
-
-            \left( \begin{array}{c} x^\prime \\ y^\prime \end{array} \right)
-            = S \left( \begin{array}{c} x \\ y \end{array} \right)
-
-        and :math:`S` is the return value of this function ``S = shear.getMatrix()``.
-
-        Specifically, the matrix is
-
-        .. math::
-
-            S = \frac{1}{\sqrt{1-g^2}}
-                    \left( \begin{array}{cc} 1+g_1 & g_2 \\
-                                             g_2 & 1-g_1 \end{array} \right)
-        """
         return jnp.array([[ 1.+self.g1,  self.g2   ],
                          [  self.g2  , 1.-self.g1 ]]) / jnp.sqrt(1.-self.g**2)
+
+    @_wraps(_galsim.Shear.rotationWith)
+    def rotationWith(self, other):
+        S3 = self.getMatrix().dot(other.getMatrix()[:,:1])
+        R = (-(self + other)).getMatrix().dot(S3)
+        theta = jnp.arctan2(R[1,0], R[0,0])
+        return theta * radians
+
+    def _Shear(g):
+        """Equivalent to ``galsim.Shear(g=g)``, but without the overhead of the normal sanity checks
+        and other options for how to specify the shear.
+
+        Parameters:
+            g =  g1 + 1j * g2.
+
+        Returns:
+            a `galsim.Shear` instance
+        """
+        return Shear(g=g)
