@@ -189,28 +189,93 @@ class GSObject:
         aux_data["gsparams"] = gsparams
         return self.tree_unflatten(aux_data, children)
 
+    @_wraps(_galsim.GSObject.withScaledFlux)
     def withScaledFlux(self, flux_ratio):
-        from jax_galsim.transform import _Transform
+        from jax_galsim.transform import Transform
+        return Transform(self, flux_ratio=flux_ratio)
 
-        return _Transform(self, flux_ratio=flux_ratio)
+    @_wraps(_galsim.GSObject.expand)
+    def expand(self, scale):
+        from jax_galsim.transform import Transform
+        return Transform(self, jac=[scale, 0., 0., scale])
+
+    @_wraps(_galsim.GSObject.dilate)
+    def dilate(self, scale):
+        from jax_galsim.transform import Transform
+        return Transform(self, jac=[scale, 0., 0., scale], flux_ratio=1./scale**2)
+
+    @_wraps(_galsim.GSObject.magnify)
+    def magnify(self, mu):
+        return self.expand(jnp.sqrt(mu))
 
 
+    @_wraps(_galsim.GSObject.shear)
+    def shear(self, *args, **kwargs):
+        from jax_galsim.transform import Transform
+        from jax_galsim.shear import Shear
+
+        if len(args) == 1:
+            if kwargs:
+                raise TypeError("Error, gave both unnamed and named arguments to GSObject.shear!")
+            if not isinstance(args[0], Shear):
+                raise TypeError("Error, unnamed argument to GSObject.shear is not a Shear!")
+            shear = args[0]
+        elif len(args) > 1:
+            raise TypeError("Error, too many unnamed arguments to GSObject.shear!")
+        elif len(kwargs) == 0:
+            raise TypeError("Error, shear argument is required")
+        else:
+            shear = Shear(**kwargs)
+        return Transform(self, shear.getMatrix())
+
+    @_wraps(_galsim.GSObject._shear)
     def _shear(self, shear):
-        """Equivalent to `GSObject.shear`, but without the overhead of sanity checks or other
-        ways to input the ``shear`` value.
-
-        Also, it won't propagate any noise attribute.
-
-        Parameters:
-            shear:      The `Shear` to be applied.
-
-        Returns:
-            the sheared object.
-        """
         from jax_galsim.transform import _Transform
         return _Transform(self, shear.getMatrix())
 
-    
+
+    @_wraps(_galsim.GSObject.lens)
+    def lens(self, g1, g2, mu):
+        from jax_galsim.transform import Transform
+        from jax_galsim.shear import Shear
+
+        shear = Shear(g1=g1, g2=g2)
+        return Transform(self, shear.getMatrix() * jnp.sqrt(mu))
+
+    @_wraps(_galsim.GSObject._lens)
+    def _lens(self, g1, g2, mu):
+        from jax_galsim.transform import _Transform
+        from jax_galsim.shear import _Shear
+
+        shear = _Shear(g1 + 1j*g2)
+        return _Transform(self, shear.getMatrix() * jnp.sqrt(mu))
+
+
+    @_wraps(_galsim.GSObject.rotate,
+            lax_description="theta is not an Angle instance, it is just an angle in radian")
+    def rotate(self, theta):
+        from jax_galsim.transform import Transform
+
+        s,c = jnp.sin(theta), jnp.cos(theta)
+        return Transform(self, jac=[c, -s, s, c])
+
+    @_wraps(_galsim.GSObject.transform)
+    def transform(self, dudx, dudy, dvdx, dvdy):
+        from jax_galsim.transform import Transform
+        return Transform(self, jac=[dudx, dudy, dvdx, dvdy])
+        
+    @_wraps(_galsim.GSObject.shift)
+    def shift(self, *args, **kwargs):
+        from jax_galsim.transform import Transform
+        
+        offset = parse_pos_args(args, kwargs, 'dx', 'dy') # should be PositionD type
+        return Transform(self, offset=offset)
+
+    @_wraps(_galsim.GSObject_.shift)
+    def _shift(self, dx, dy):
+        from jax_galsim.transform import _Transform
+        return _Transform(self, offset=PositionD(dx,dy))
+        
 
     # Make sure the image is defined with the right size and wcs for drawImage()
     def _setup_image(
