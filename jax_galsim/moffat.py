@@ -111,10 +111,19 @@ class Moffat(GSObject):
                  flux=1., gsparams=None
     ):
 
+        
+
         # JEC notice that trunc==0. means no truncated Moffat. Care in the algo
+
+        if trunc != 0.:
+            raise NotImplementedError("truncated Moffat Not yet fully implemented")
+
+
         self._beta = beta
         self._trunc = trunc
-##See GSObject         self._flux = flux
+
+        
+        # See GSObject         self._flux = flux
 
         # Checking gsparams
         gsparams = GSParams.check(gsparams)
@@ -172,11 +181,11 @@ class Moffat(GSObject):
 
 
         #finalise the init HLR/ScaleRadius/FWHM determination
-        _inv_r0 = 1./self._r0
+        self._inv_r0 = 1./self._r0
 
         # maxRrD = maxR/rd ; fluxFactor Integral of total flux in terms of 'rD' units.
         if trunc>0.:
-            _maxRrD = truc * _inv_r0
+            _maxRrD = truc * self._inv_r0
             _fluxFactor = 1. - jnp.power( 1+_maxRrD*_maxRrD, (1.-beta))
         else:
             _fluxFactor = 1.
@@ -193,20 +202,22 @@ class Moffat(GSObject):
         #Some other variables
         _maxR = _maxRrD * self._r0  # maximum r
         _maxR_sq = _maxR * _maxR
-        _maxRrD_sq = _maxRrD * _maxRrD
+        self._maxRrD_sq = _maxRrD * _maxRrD
 
         self._norm  = flux * (beta-1)/(jnp.pi * _fluxFactor * self._r0**2) # Normalisation f(x) (trunc=0)
-        self._knorm = flux # Normalisation f(k)
+        self._knorm = flux # Normalisation f(k) (trunc = 0, k=0)
+        self._knorm_bis = flux * 4.0 / (jnp.power(2.0,self._beta) * jnp.exp(jax.lax.lgamma(self._beta-1.0) )) # Normalisation f(k) (trunc = 0; k=/= 0)
+        
 
 
         # Register some parameters (see if all are needed ?)
         super().__init__(
             beta = beta,
-            flux = flux,
-            trunc = trunc,
             scale_radius = self._r0,
             half_light_radius = self._hlr,
             fwhm = self._fwhm,
+            trunc = trunc,
+            flux = flux,
             gsparams = gsparams
             )
 
@@ -256,8 +267,9 @@ class Moffat(GSObject):
             raise NotImplementedError("maxk for truncated Moffat Not yet implemented")
 
 
+        self._r0_sq = self._r0 * self._r0
+        self._inv_r0_sq = self._inv_r0 * self._inv_r0
         self._maxk0 = maxk / self._r0 # use _maxk0 to avoid Attribute error due to gsobject def. 
-
 
 
         # determination of stepk
@@ -279,20 +291,6 @@ class Moffat(GSObject):
 
         self._stepk0 = stepk
             
-    @property
-    def beta(self):
-        """The beta parameter of this `Moffat` profile.
-        """
-        return self.params["beta"]
-
-    @property
-    def scale_radius(self):
-        """The scale radius of this `Moffat` profile.
-        """
-        return self.params["scale_radius"]
-
-
-
     @property
     def beta(self):
         """The beta parameter of this `Moffat` profile.
@@ -348,3 +346,55 @@ class Moffat(GSObject):
     @property
     def _stepk(self):
         return self._stepk0
+
+    @property
+    def _has_hard_edges(self):
+        return self._trunc != 0.
+
+    @property
+    def _max_sb(self):
+        return self._norm
+
+    def _xValue(self, pos):
+        rsq = (pos.x**2 + pos.y**2)*self._inv_r0_sq
+        #trunc if r>maxR with r0 scaled version
+        return jax.lax.select(rsq > self._maxRrD_sq,
+                               0.,
+                               self._norm * jnp.power(1.+rsq, -self._beta))
+
+    def _Knu(self,nu,x):
+        import tensorflow_probability as tfp
+        return tfp.substrates.jax.math.bessel_kve(nu,x)/jnp.exp(jnp.abs(x))
+
+    def _kValue_untrunc(self, kpos):
+        """Non truncated version of _kValue
+        """
+        k = jnp.sqrt( (kpos.x**2 + kpos.y**2)*self._r0_sq )
+        
+        return jax.lax.select(k==0,
+                              self._knorm,
+                              self._knorm_bis * jnp.power(k,self._beta-1.) * self._Knu(self._beta-1, k))
+                                       
+
+    def _kvalue_trunc(self, kpos):
+        """truncated version of _kValue
+        """
+        return -1.
+        ###raise NotImplementedError("truncated Moffat Not yet fully implemented")
+    
+    def _kValue(self, kpos):
+        print("test: ",self._trunc, self._trunc ==0., jax.lax.cond(self._trunc ==0., lambda: 1.,lambda: -1.))
+        return jax.lax.cond(self._trunc ==0., self._kValue_untrunc, self._kvalue_trunc,operand=kpos) 
+
+    def _drawReal(self, image, jac=None, offset=(0.0, 0.0), flux_scaling=1.0):
+        _jac = jnp.eye(2) if jac is None else jac
+        return draw_by_xValue(self, image, _jac, jnp.asarray(offset), flux_scaling)
+
+    def _drawKImage(self, image, jac=None):
+        _jac = jnp.eye(2) if jac is None else jac
+        return draw_by_kValue(self,image, _jac)
+
+    
+    def withFlux(self, flux):
+        return Moffat(beta=self.beta, scale_radius=self.scale_radius,  trunc=self.trunc,
+                      flux=flux, gsparams=self.gsparams)
