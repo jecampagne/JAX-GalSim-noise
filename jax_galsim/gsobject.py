@@ -271,7 +271,7 @@ class GSObject:
         offset = parse_pos_args(args, kwargs, 'dx', 'dy') # should be PositionD type
         return Transform(self, offset=offset)
 
-    @_wraps(_galsim.GSObject_.shift)
+    @_wraps(_galsim.GSObject._shift)
     def _shift(self, dx, dy):
         from jax_galsim.transform import _Transform
         return _Transform(self, offset=PositionD(dx,dy))
