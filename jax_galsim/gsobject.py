@@ -563,7 +563,7 @@ class GSObject:
 
         # If necessary, convolve by the pixel
         if method == 'fft':
-            print("JEC do Pixel Convolve as method=",method)
+        #    print("JEC do Pixel Convolve as method=",method)
             prof = Convolve(prof, Pixel(scale=1.0, gsparams=self.gsparams),
                             real_space=False, gsparams=self.gsparams)
         else:

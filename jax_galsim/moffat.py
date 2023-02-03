@@ -383,8 +383,9 @@ class Moffat(GSObject):
         ###raise NotImplementedError("truncated Moffat Not yet fully implemented")
     
     def _kValue(self, kpos):
-        print("test: ",self._trunc, self._trunc ==0., jax.lax.cond(self._trunc ==0., lambda: 1.,lambda: -1.))
-        return jax.lax.cond(self._trunc ==0., self._kValue_untrunc, self._kvalue_trunc,operand=kpos) 
+        return jax.lax.cond(self._trunc ==0.,
+                            self._kValue_untrunc,
+                            self._kvalue_trunc,operand=kpos) 
 
     def _drawReal(self, image, jac=None, offset=(0.0, 0.0), flux_scaling=1.0):
         _jac = jnp.eye(2) if jac is None else jac
