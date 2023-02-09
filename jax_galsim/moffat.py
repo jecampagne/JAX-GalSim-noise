@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -12,15 +14,37 @@ from jax_galsim.gsobject import GSObject
 from jax_galsim.gsparams import GSParams
 from jax_galsim.core.draw import draw_by_xValue, draw_by_kValue
 
+from jax_galsim.bessel import J0
+from jax_galsim.integrate import ClenshawCurtisQuad, quad_integral
+from jax_galsim.interpolate import InterpolatedUnivariateSpline
+
 import galsim as _galsim
 from jax._src.numpy.util import _wraps
 from jax.tree_util import register_pytree_node_class
+
+import tensorflow_probability as tfp
+
 
 ##JEC 20/1/23
 ## Moffat profile implementation
 ## Nb: The maxK in case of trunc =0 differs from the GalSim implementation
 ##     see https://github.com/GalSim-developers/GalSim/issues/1208
 ##     To allow a comparison of GalSim/Jax-GalSim I code also the original GalSim expression 
+
+##JEC 7/2/23
+## Truncated Moffat (start)
+
+# Modified Bessel 2nd kind for Untruncated Moffat
+def _Knu(nu,x):
+    return tfp.substrates.jax.math.bessel_kve(nu,x)/jnp.exp(jnp.abs(x))
+
+# For truncated Hankel used in truncated Moffat
+def MoffatIntegrant(x, k, beta):
+  return x * jnp.power(1+x**2,-beta) * J0(k*x)
+
+def _xMoffatIntegrant(k,beta,rmax, quad):
+    return quad_integral(partial(MoffatIntegrant, k=k, beta=beta),0., rmax, quad)
+
 
 
 
@@ -40,10 +64,10 @@ def MoffatCalculateSRFromHLR(re,rm,beta):
     nb2. In GalSim definition rm = 0 (ex. no truncated Moffat) means in reality rm=+Inf.
          BUT the case rm==0 is already done, so HERE rm != 0
     """
-    assert rm !=0., f"rm=={rm} should be done elsewhere"
+    assert rm !=0., f"MoffatCalculateSRFromHLR: rm=={rm} should be done elsewhere"
 
     #Sould be verified before calling the function
-    assert rm <= jnp.sqrt(2.) * re, "Cannot find a scaled radius"
+    assert rm > jnp.sqrt(2.) * re, f"MoffatCalculateSRFromHLR: Cannot find a scaled radius: rm={rm}, sqrt(2)*re={jnp.sqrt(2.) * re}"
 
 ## JEC : one way to solve close to the original GalSim but needs jaxopt.Bisection
 ##     #find rd intervalle search [rmin, rmax]
@@ -115,8 +139,8 @@ class Moffat(GSObject):
 
         # JEC notice that trunc==0. means no truncated Moffat. Care in the algo
 
-        if trunc != 0.:
-            raise NotImplementedError("truncated Moffat Not yet fully implemented")
+        #if trunc != 0.:
+        #    raise NotImplementedError("truncated Moffat Not yet fully implemented")
 
 
         self._beta = beta
@@ -185,7 +209,7 @@ class Moffat(GSObject):
 
         # maxRrD = maxR/rd ; fluxFactor Integral of total flux in terms of 'rD' units.
         if trunc>0.:
-            _maxRrD = truc * self._inv_r0
+            _maxRrD = trunc * self._inv_r0
             _fluxFactor = 1. - jnp.power( 1+_maxRrD*_maxRrD, (1.-beta))
         else:
             _fluxFactor = 1.
@@ -224,6 +248,12 @@ class Moffat(GSObject):
 
         #determination of maxK
         if trunc == 0:
+
+            ## JEC 8/2/23: this code would have to be replaced by a direct use of K-fucntion
+            ##             by passing the approximation. This is the outcome of the issue
+            ##             
+
+            
             ## JEC 21/1/23: see issue #1208 in GalSim github as it seems there is an error
             ## in the expression used.
             
@@ -262,10 +292,25 @@ class Moffat(GSObject):
             val_init = (alpha, jnp.inf, eps, self._beta, alpha, 0) # note the last item is only here to use GalSim code
             val = jax.lax.while_loop(cond, body, val_init)
             maxk, dk,eps,beta,alpha,i  = val
+
+            self._kV=self._kValue_untrunc
         else:
             # Truncated Moffat
-            raise NotImplementedError("maxk for truncated Moffat Not yet implemented")
 
+            prefactor = 2. * (self._beta-1.) / (_fluxFactor)  
+            maxk_val = gsparams.maxk_threshold # a for gaussian profile... this is f(k_max)/Flux = maxk_threshold
+            # we prepare a Spline interpolator for kValue computations
+            dk = gsparams.table_spacing * jnp.sqrt(jnp.sqrt(gsparams.kvalue_accuracy / 10.))
+            ki = jnp.arange(0.,50.,dk) # 50 is a max (GalSim) but it may be lowered if necessara
+            #print("JEC DBG trunc: dk=",dk," Nk= ",len(ki))
+            _hankel = partial(_xMoffatIntegrant,beta=self._beta,rmax=_maxRrD,
+                             quad=ClenshawCurtisQuad.init(150))
+            v_hankel = jax.jit(jax.vmap(_hankel))
+            fki = v_hankel(ki) * prefactor
+            maxk = ki[jnp.abs(fki)>maxk_val][-1]
+            self._spline = InterpolatedUnivariateSpline(ki**2,fki) # we use [k**2, f(k)]_i table
+            self._kV = self._kvalue_trunc
+            
 
         self._r0_sq = self._r0 * self._r0
         self._inv_r0_sq = self._inv_r0 * self._inv_r0
@@ -362,10 +407,6 @@ class Moffat(GSObject):
                                0.,
                                self._norm * jnp.power(1.+rsq, -self._beta))
 
-    def _Knu(self,nu,x):
-        import tensorflow_probability as tfp
-        return tfp.substrates.jax.math.bessel_kve(nu,x)/jnp.exp(jnp.abs(x))
-
     def _kValue_untrunc(self, kpos):
         """Non truncated version of _kValue
         """
@@ -373,19 +414,23 @@ class Moffat(GSObject):
         
         return jax.lax.select(k==0,
                               self._knorm,
-                              self._knorm_bis * jnp.power(k,self._beta-1.) * self._Knu(self._beta-1, k))
+                              self._knorm_bis * jnp.power(k,self._beta-1.) * _Knu(self._beta-1, k))
                                        
 
     def _kvalue_trunc(self, kpos):
         """truncated version of _kValue
         """
-        return -1.
-        ###raise NotImplementedError("truncated Moffat Not yet fully implemented")
+        ksq = (kpos.x**2 + kpos.y**2)*self._r0_sq
+        
+        return jax.lax.select(ksq>2500., #50.**2
+                              0.,
+                              self._knorm * self._spline(ksq))
     
     def _kValue(self, kpos):
-        return jax.lax.cond(self._trunc ==0.,
-                            self._kValue_untrunc,
-                            self._kvalue_trunc,operand=kpos) 
+        return self._kV(kpos)
+#        return jax.lax.cond(self._trunc ==0.,
+#                            self._kValue_untrunc,
+#                            self._kvalue_trunc,operand=kpos) 
 
     def _drawReal(self, image, jac=None, offset=(0.0, 0.0), flux_scaling=1.0):
         _jac = jnp.eye(2) if jac is None else jac

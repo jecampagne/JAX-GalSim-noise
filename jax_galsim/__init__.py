@@ -62,3 +62,10 @@ from jax_galsim.helpers import seed
 
 #Convolution
 from jax_galsim.convolve import Convolve, Convolution
+
+#Bessel
+from jax_galsim.bessel import J0
+#Integration
+from jax_galsim.integrate import ClenshawCurtisQuad, quad_integral
+#Interpolation
+from jax_galsim.interpolate import InterpolatedUnivariateSpline
