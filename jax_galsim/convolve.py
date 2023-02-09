@@ -87,10 +87,10 @@ class Convolution(GSObject):
         if not real_space and hard_edge:
 
             if len(args) == 2:
-                galsim_warn("Doing convolution of 2 objects, both with hard edges. "
+                _galsim_warn("Doing convolution of 2 objects, both with hard edges. "
                             "This might be more accurate")##### and/or faster using real_space=True")
             else:
-                galsim_warn("Doing convolution where all objects have hard edges. "
+                _galsim_warn("Doing convolution where all objects have hard edges. "
                             "There might be some inaccuracies due to ringing in k-space.")
 ##         if real_space:
 ##             # Can't do real space if nobj > 2
