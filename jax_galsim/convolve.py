@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import galsim as _galsim
+
 from jax._src.numpy.util import _wraps
 from jax_galsim.gsobject import GSObject
 from jax_galsim.gsparams import GSParams
@@ -87,10 +88,10 @@ class Convolution(GSObject):
         if not real_space and hard_edge:
 
             if len(args) == 2:
-                _galsim_warn("Doing convolution of 2 objects, both with hard edges. "
+                print("Doing convolution of 2 objects, both with hard edges. "
                             "This might be more accurate")##### and/or faster using real_space=True")
             else:
-                _galsim_warn("Doing convolution where all objects have hard edges. "
+                print("Doing convolution where all objects have hard edges. "
                             "There might be some inaccuracies due to ringing in k-space.")
 ##         if real_space:
 ##             # Can't do real space if nobj > 2
