@@ -89,7 +89,7 @@ class Convolution(GSObject):
 
             if len(args) == 2:
                 print("Doing convolution of 2 objects, both with hard edges. "
-                            "This might be more accurate")##### and/or faster using real_space=True")
+                            "This might be more accurate and/or faster using real_space=True (not yet)")
             else:
                 print("Doing convolution where all objects have hard edges. "
                             "There might be some inaccuracies due to ringing in k-space.")
