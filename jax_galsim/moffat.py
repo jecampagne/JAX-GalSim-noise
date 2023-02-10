@@ -302,13 +302,14 @@ class Moffat(GSObject):
             # we prepare a Spline interpolator for kValue computations
             dk = gsparams.table_spacing * jnp.sqrt(jnp.sqrt(gsparams.kvalue_accuracy / 10.))
             ki = jnp.arange(0.,50.,dk) # 50 is a max (GalSim) but it may be lowered if necessara
-            #print("JEC DBG trunc: dk=",dk," Nk= ",len(ki))
-            _hankel = partial(_xMoffatIntegrant,beta=self._beta,rmax=_maxRrD,
+            print("JEC DBG trunc: dk=",dk," Nk= ",len(ki))
+            _hankel1 = partial(_xMoffatIntegrant,beta=self._beta,rmax=_maxRrD,
                              quad=ClenshawCurtisQuad.init(150))
-            v_hankel = jax.jit(jax.vmap(_hankel))
-            fki = v_hankel(ki) * prefactor
+            self._hankel = lambda k :  _hankel1(k) * prefactor
+            self._v_hankel = jax.jit(jax.vmap(self._hankel))
+            fki = self._v_hankel(ki)
             maxk = ki[jnp.abs(fki)>maxk_val][-1]
-            self._spline = InterpolatedUnivariateSpline(ki**2,fki) # we use [k**2, f(k)]_i table
+##            self._spline = InterpolatedUnivariateSpline(ki**2,fki) # we use [k**2, f(k)]_i table
             self._kV = self._kvalue_trunc
             
 
@@ -422,9 +423,14 @@ class Moffat(GSObject):
         """
         ksq = (kpos.x**2 + kpos.y**2)*self._r0_sq
         
-        return jax.lax.select(ksq>2500., #50.**2
+        #        return jax.lax.select(ksq>2500., #50.**2
+        #                              0.,
+        #                              self._knorm * self._spline(ksq))
+        k = jnp.sqrt(ksq) 
+        return jax.lax.select(k>50.,
                               0.,
-                              self._knorm * self._spline(ksq))
+                              self._knorm * self._hankel(k))
+
     
     def _kValue(self, kpos):
         return self._kV(kpos)
