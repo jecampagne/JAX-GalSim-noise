@@ -699,7 +699,7 @@ class GSObject:
 ##         print("makeKImg: ", jnp.array(image.bounds._getinitargs()), jnp.array(image.bounds.numpyShape()), image_N)
         
         
-        N = max(N, image_N)
+        N = jnp.max(N, image_N)
 
 ##         print("makeKImg: N (1)", N)
         
@@ -709,7 +709,7 @@ class GSObject:
 ##         print("makeKImg: N (2)", N)
 
         # Make sure we hit the minimum size specified in the gsparams.
-        N = max(N, self.gsparams.minimum_fft_size)
+        N = jnp.max(N, self.gsparams.minimum_fft_size)
 
 ##         print("makeKImg: N (3)", N)
         
