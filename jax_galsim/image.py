@@ -1261,7 +1261,7 @@ class Image(object):
 
         # Reference from GalSim C++
         # https://github.com/GalSim-developers/GalSim/blob/ece3bd32c1ae6ed771f2b489c5ab1b25729e0ea4/src/Image.cpp#L1009
-        input_size = int(input_size)
+        input_size = jnp.array([input_size],dtype=jnp.int64).item() # int(input_size)
         if input_size <= 2:
             return 2
         # Reduce slightly to eliminate potential rounding errors:
