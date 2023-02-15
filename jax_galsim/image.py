@@ -440,11 +440,12 @@ class Image(object):
                 raise _galsim.GalSimIncompatibleValuesError(
                     "Both nrow and ncol must be provided", ncol=ncol, nrow=nrow
                 )
-            if ncol != int(ncol) or nrow != int(nrow):
-                raise TypeError("nrow, ncol must be integers")
-            ncol = int(ncol)
-            nrow = int(nrow)
-            self._array = self._make_empty(shape=(nrow, ncol), dtype=self._dtype)
+            # JEC            if ncol != int(ncol) or nrow != int(nrow):
+            #                raise TypeError("nrow, ncol must be integers")
+            #            ncol = int(ncol)
+            #            nrow = int(nrow)
+            #            self._array = self._make_empty(shape=(nrow, ncol), dtype=self._dtype)
+            self._array = jnp.zeros(shape=(nrow, ncol), dtype=self._dtype)
             self._bounds = BoundsI(xmin, xmin + ncol - 1, ymin, ymin + nrow - 1)
             if init_value:
                 self._array = self._array + init_value
@@ -753,7 +754,9 @@ class Image(object):
         """
         if not isinstance(bounds, BoundsI):
             raise TypeError("bounds must be a galsim.BoundsI instance")
-        self._array = self._make_empty(shape=bounds.numpyShape(), dtype=self.dtype)
+
+        # self._array = self._make_empty(shape=bounds.numpyShape(), dtype=self.dtype)
+        self._array = jnp.zeros(shape=bounds.numpyShape(), dtype=self.dtype)
         self._bounds = bounds
         if wcs is not None:
             self.wcs = wcs
